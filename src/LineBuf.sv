@@ -1,3 +1,9 @@
+/*
+* LineBuf.sv
+* Author: Aero2021
+* Version: 2.0: 固定bram的深度    
+*/
+
 `timescale 1ns / 1ps
 
 module LineBuf #(
