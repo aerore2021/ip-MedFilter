@@ -376,7 +376,7 @@ module MedFilt_3x3 #(
     CompareRow #(
         .DATA_WIDTH  	(DATA_WIDTH  ),
         .WINDOW_SIZE 	(WINDOW_SIZE  ))
-    u_CompareRow_3(
+    u_CompareRow_Medmed(
         .clk   	(clk    ),
         .rst_n 	(rst_n  ),
         .w1    	(Med1     ),

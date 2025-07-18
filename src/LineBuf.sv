@@ -11,9 +11,16 @@ module LineBuf #(
     output [DATA_WIDTH-1:0] data_out
 );
     localparam ADDR_WIDTH = $clog2(LATENCY);
-    
-    logic [ADDR_WIDTH-1:0] addra;
-    logic [ADDR_WIDTH-1:0] addrb;
+    localparam BRAM_DEPTH = 8192;
+
+    initial begin
+        if (ADDR_WIDTH > $clog2(BRAM_DEPTH)) begin
+            $warning("Address width exceeds BRAM depth, may cause issues.");
+        end
+    end
+
+    logic [12:0] addra;
+    logic [12:0] addrb;
     
     always_ff @(posedge clk) begin
         if (!rst_n) begin
@@ -34,6 +41,7 @@ module LineBuf #(
             end
         end
     end
+    
     // 数据位宽一定要相等，深度可以开大一些
     BRAM_32x8192 bram_inst_linebuf (
         .clka(clk),    // input wire clka
