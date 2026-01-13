@@ -7,9 +7,9 @@ module CompareRow #(
     input   [DATA_WIDTH-1:0] w1,
     input   [DATA_WIDTH-1:0] w2,
     input   [DATA_WIDTH-1:0] w3,
-    output  [DATA_WIDTH-1:0] min,
-    output  [DATA_WIDTH-1:0] med,
-    output  [DATA_WIDTH-1:0] max
+    output reg  [DATA_WIDTH-1:0] min,
+    output reg [DATA_WIDTH-1:0] med,
+    output reg [DATA_WIDTH-1:0] max
 );
 
 logic   [DATA_WIDTH-1:0] min_0, max_0, min_1, max_1, min_0_r;

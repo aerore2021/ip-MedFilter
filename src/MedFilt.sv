@@ -7,20 +7,31 @@ module MedFilt_3x3 #(
 ) (
     input logic                       clk,
     input logic                       rst_n,
-    AxiStreamIf.Slave s_axis,
-    AxiStreamIf.Master m_axis
+    input logic                      s_axis_tvalid,
+    output logic                      s_axis_tready,
+    input logic [DATA_WIDTH-1:0]     s_axis_tdata,
+    input logic                      s_axis_tlast,
+    input logic                      s_axis_tuser,
+
+
+        // Master AXI Stream signals
+    output logic                      m_axis_tvalid,
+    input  logic                      m_axis_tready,
+    output logic [DATA_WIDTH-1:0]     m_axis_tdata,
+    output logic                      m_axis_tlast,
+    output logic                      m_axis_tuser
 );
     localparam int WINDOW_SIZE = 3;
     localparam int LINEBUF_DEPTH = FRAME_WIDTH;
     localparam int WIDTH_WIDTH = $clog2(FRAME_WIDTH);
     localparam int HEIGHT_WIDTH = $clog2(FRAME_HEIGHT);
 
-    localparam int LATENCY_LINEBUF = (WINDOW_SIZE - 1) * LINEBUF_DEPTH;
+    localparam int LATENCY_LINEBUF = LINEBUF_DEPTH;
     localparam int LATENCY_GET_WINDOW = WINDOW_SIZE - 1;
     localparam int LATENCY_PADDING_STAGE_1 = 1;
     localparam int LATENCY_PADDING_STAGE_2 = 1;
     localparam int LATENCY_TO_PADDING_STAGE_1 = LATENCY_LINEBUF + LATENCY_GET_WINDOW;
-    localparam int LATENCY_TO_PADDING_STAGE_2 = LATENCY_TO_PADDING_STAGE_1 + LATENCY_PADDING_STAGE_1;
+    localparam int LATENCY_TO_PADDING_STAGE_2 = LATENCY_TO_PADDING_STAGE_1;
     localparam int LATENCY_COMPARE_ROW = 3;
     localparam int LATENCT_COMPARE_STAGE_1 = LATENCY_COMPARE_ROW;
     localparam int LATENCT_COMPARE_STAGE_2 = LATENCY_COMPARE_ROW;
@@ -35,7 +46,7 @@ module MedFilt_3x3 #(
             in_hcnt <= 0;
             in_vcnt <= 0;
         end else begin
-            if (s_axis.tvalid && s_axis.tready) begin
+            if (s_axis_tvalid && s_axis_tready) begin
                 if (in_hcnt == FRAME_WIDTH - 1) begin
                     in_hcnt <= 0;
                     if (in_vcnt == FRAME_HEIGHT - 1) begin
@@ -65,7 +76,7 @@ module MedFilt_3x3 #(
     ) linebuf_in_hcnt_r_inst (
         .clk(clk),
         .rst_n(rst_n),
-        .in_valid(s_axis.tvalid),
+        .in_valid(s_axis_tvalid),
         .data_in(in_hcnt),
         .data_out(in_hcnt_r)
     );
@@ -76,7 +87,7 @@ module MedFilt_3x3 #(
     ) linebuf_in_vcnt_r_inst (
         .clk(clk),
         .rst_n(rst_n),
-        .in_valid(s_axis.tvalid),
+        .in_valid(s_axis_tvalid),
         .data_in(in_vcnt),
         .data_out(in_vcnt_r2)
     );
@@ -97,13 +108,13 @@ module MedFilt_3x3 #(
     assign is_normal_row_r2 = is_normal_row_r2_0 && is_normal_row_r2_1;
 
     localparam int LATENCY_DELAY_CNT = LATENCY_TOTAL;
-    localparam int LATENCY_DELAY_CNT_WIDTH = $log2(LATENCY_DELAY_CNT);
+    localparam int LATENCY_DELAY_CNT_WIDTH = $clog2(LATENCY_DELAY_CNT);
     
     logic   [LATENCY_DELAY_CNT_WIDTH-1:0] delay_cnt;
     logic   delayed;
     logic   s_fire, m_fire;
 
-    assign s_fire = s_axis.tvalid && s_axis.tready;
+    assign s_fire = s_axis_tvalid && s_axis_tready;
     assign m_fire = m_axis_tvalid && m_axis_tready;
     assign delayed = (delay_cnt >= LATENCY_DELAY_CNT - 1);
     always_ff @(posedge clk) begin
@@ -151,7 +162,7 @@ module MedFilt_3x3 #(
     // -------------------------- sync end ------------------------- //
 
     logic [DATA_WIDTH-1:0] linebuf_r [0:WINDOW_SIZE-1];
-    assign linebuf_r[0] = s_axis.tdata; 
+    assign linebuf_r[0] = s_axis_tdata; 
     generate
         for (genvar i = 0; i < WINDOW_SIZE - 1; i++) begin : gen_linebufs
             LineBuf #(
@@ -160,16 +171,16 @@ module MedFilt_3x3 #(
             ) linebuf_inst (
                 .clk(clk),
                 .rst_n(rst_n),
-                .in_valid(s_axis.tvalid),
+                .in_valid(s_axis_tvalid),
                 .data_in(linebuf_r[i]),
                 .data_out(linebuf_r[i + 1])
             );
         end
     endgenerate
     logic [DATA_WIDTH-1:0] GetWindow_in [0:WINDOW_SIZE-1];
-    assign GetWindow_in[0] = linebuf_r[0];
+    assign GetWindow_in[0] = linebuf_r[2];
     assign GetWindow_in[1] = linebuf_r[1];
-    assign GetWindow_in[2] = linebuf_r[2];
+    assign GetWindow_in[2] = linebuf_r[0]; // input 在最下面一行
 
 
     logic [DATA_WIDTH-1:0] w11_p0, w12_p0, w13_p0, w21_p0, w22_p0, w23_p0, w31_p0, w32_p0, w33_p0;
@@ -314,7 +325,7 @@ module MedFilt_3x3 #(
     
     // ------------------------------ compare ------------------------------------ //
     
-    // stage 1
+    // stage 1 LATENCY = 3
     logic   [DATA_WIDTH-1:0] Med1, Med2, Med3, Min1, Min2, Min3, Max1, Max2, Max3;
     
     CompareRow #(
@@ -357,17 +368,21 @@ module MedFilt_3x3 #(
         .max   	(Max3    )
     );
 
-    // stage 2
+    // stage 2 LATENCY = 3
     logic   [DATA_WIDTH-1:0] Medmed, Maxmin, Minmax;
     
     logic   [DATA_WIDTH-1:0] Maxmin_0, Minmax_0;
     logic   [DATA_WIDTH-1:0] max_maxmin, min_maxmin;
+
+    logic   [DATA_WIDTH-1:0] Max3_r, Min3_r;
     always_ff @(posedge clk) begin
+        Max3_r <= Max3;
+        Min3_r <= Min3;
         Maxmin_0 <= (Max1 > Max2) ? Max2 : Max1;
         Minmax_0 <= (Min1 > Min2) ? Min1 : Min2;
 
-        Maxmin <= (Maxmin_0 > Max3) ? Max3 : Maxmin_0;
-        Minmax <= (Minmax_0 > Min3) ? Minmax_0 : Min3;
+        Maxmin <= (Maxmin_0 > Max3_r) ? Max3_r : Maxmin_0;
+        Minmax <= (Minmax_0 > Min3_r) ? Minmax_0 : Min3_r;
 
         max_maxmin <= (Maxmin > Minmax) ? Maxmin : Minmax;
         min_maxmin <= (Maxmin > Minmax) ? Minmax : Maxmin;
@@ -387,7 +402,7 @@ module MedFilt_3x3 #(
         .max   	(    )
     );
 
-    // stage 3
+    // stage 3 LATENCY = 2
     logic   [DATA_WIDTH-1:0] min_maxmin_r, min_max_Medmed;
     logic   [DATA_WIDTH-1:0] med_value;
     always_ff @(posedge clk) begin
@@ -397,7 +412,7 @@ module MedFilt_3x3 #(
         med_value <= (min_max_Medmed > min_maxmin_r) ? min_max_Medmed : min_maxmin_r;
     end
 
-    assign  m_axis.tdata = med_value;
+    assign  m_axis_tdata = med_value;
 
 endmodule
 

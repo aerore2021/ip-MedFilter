@@ -7,8 +7,8 @@
 `timescale 1ns / 1ps
 
 module LineBuf #(
-    DATA_WIDTH = 8,
-    LATENCY = 0
+    parameter DATA_WIDTH = 8,
+    parameter LATENCY = 0
 ) (
     input   clk,
     input   rst_n,
@@ -48,16 +48,22 @@ module LineBuf #(
         end
     end
     
-    // 数据位宽一定要相等，深度可以开大一些
-    BRAM_32x8192 bram_inst_linebuf (
-        .clka(clk),    // input wire clka
-        .wea(in_valid),      // input wire [0 : 0] wea
-        .addra(addra),  // input wire [ADDR_WIDTH-1 : 0] addra
-        .dina(data_in),    // input wire [DATA_WIDTH-1 : 0] dina
-        .clkb(clk),    // input wire clkb
-        .enb(1'b1),      // input wire enb
-        .addrb(addrb),  // input wire [ADDR_WIDTH-1 : 0] addrb
-        .doutb(data_out)  // output wire [DATA_WIDTH-1 : 0] doutb
-    );
+    // 行为级双端口 RAM
+    logic [DATA_WIDTH-1:0] ram [0:BRAM_DEPTH-1];
+    logic [DATA_WIDTH-1:0] data_out_reg;
+    
+    // 端口 A: 写
+    always_ff @(posedge clk) begin
+        if (in_valid) begin
+            ram[addra] <= data_in;
+        end
+    end
+    
+    // 端口 B: 读
+    always_ff @(posedge clk) begin
+        data_out_reg <= ram[addrb];
+    end
+    
+    assign data_out = data_out_reg;
 
 endmodule
